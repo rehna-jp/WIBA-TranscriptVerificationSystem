@@ -1,66 +1,195 @@
-## Foundry
+Blockchain-Based Transcript Verification System
+A decentralized platform for issuing and verifying academic credentials using blockchain technology, IPFS storage, and Firebase backend infrastructure.
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+🎯 Overview
+This project addresses the critical problem of academic credential fraud by creating an immutable, instantly verifiable system for educational transcripts. Traditional verification processes take days or weeks and are prone to fraud. Our blockchain-based solution provides instant, cryptographically-secure verification.
+The Problem
 
-Foundry consists of:
+Credential Fraud: Fake degrees cost employers millions annually
+Slow Verification: Traditional processes take 3-14 days
+High Costs: Manual verification is expensive
+Lost Documents: Students frequently lose paper transcripts
+No Global Standard: Each institution has different verification procedures
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+The Solution
+A decentralized platform where:
 
-## Documentation
+Institutions issue tamper-proof credentials on blockchain
+Documents are stored on decentralized IPFS
+Anyone can verify authenticity instantly
+Students control their own credentials
+Zero trust required in intermediaries
 
-https://book.getfoundry.sh/
 
-## Usage
+✨ Features
+For Institutions
 
-### Build
+✅ Issue digital credentials with cryptographic proof
+✅ Upload and encrypt transcripts to IPFS
+✅ Revoke credentials if necessary (fraud, error)
+✅ View all issued credentials
+✅ Batch issuance capability
 
-```shell
-$ forge build
-```
+For Students
 
-### Test
+✅ View all their credentials in one portal
+✅ Download transcripts from IPFS
+✅ Share verifiable links with employers
+✅ Full ownership and control of credentials
+✅ Access from anywhere, anytime
 
-```shell
-$ forge test
-```
+For Verifiers (Employers/Institutions)
 
-### Format
+✅ Upload document for instant verification
+✅ Verify by IPFS CID
+✅ Get complete credential details
+✅ No login required (public verification)
+✅ Verification logging and audit trail
 
-```shell
-$ forge fmt
-```
+For Administrators
 
-### Gas Snapshots
+✅ Register and verify institutions
+✅ Suspend/reactivate institutions
+✅ Monitor system statistics
+✅ Manage system access
 
-```shell
-$ forge snapshot
-```
+🎯 Overview
+This project addresses the critical problem of academic credential fraud by creating an immutable, instantly verifiable system for educational transcripts. Traditional verification processes take days or weeks and are prone to fraud. Our blockchain-based solution provides instant, cryptographically-secure verification.
+The Problem
 
-### Anvil
+Credential Fraud: Fake degrees cost employers millions annually
+Slow Verification: Traditional processes take 3-14 days
+High Costs: Manual verification is expensive
+Lost Documents: Students frequently lose paper transcripts
+No Global Standard: Each institution has different verification procedures
 
-```shell
-$ anvil
-```
+The Solution
+A decentralized platform where:
 
-### Deploy
+Institutions issue tamper-proof credentials on blockchain
+Documents are stored on decentralized IPFS
+Anyone can verify authenticity instantly
+Students control their own credentials
+Zero trust required in intermediaries
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
 
-### Cast
+✨ Features
+For Institutions
 
-```shell
-$ cast <subcommand>
-```
+✅ Issue digital credentials with cryptographic proof
+✅ Upload and encrypt transcripts to IPFS
+✅ Revoke credentials if necessary (fraud, error)
+✅ View all issued credentials
+✅ Batch issuance capability
 
-### Help
+For Students
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+✅ View all their credentials in one portal
+✅ Download transcripts from IPFS
+✅ Share verifiable links with employers
+✅ Full ownership and control of credentials
+✅ Access from anywhere, anytime
+
+For Verifiers (Employers/Institutions)
+
+✅ Upload document for instant verification
+✅ Verify by IPFS CID
+✅ Get complete credential details
+✅ No login required (public verification)
+✅ Verification logging and audit trail
+
+For Administrators
+
+✅ Register and verify institutions
+✅ Suspend/reactivate institutions
+✅ Monitor system statistics
+✅ Manage system access
+
+🛠️ Technology Stack
+Blockchain Layer
+
+Smart Contracts: Solidity ^0.8.20
+Development Framework: Foundry
+Network: Polygon Mumbai Testnet → Polygon Mainnet
+Web3 Library: ethers.js v6
+
+Backend Infrastructure
+
+Platform: Firebase
+
+Authentication (Email/Password + Wallet)
+Cloud Firestore (NoSQL Database)
+Cloud Functions (Serverless)
+Firebase Storage (Backup)
+Firebase Hosting
+
+
+
+Document Storage
+
+Primary: Pinata Cloud (IPFS)
+Backup: Firebase Storage
+Encryption: AES-256
+
+Frontend
+
+Framework: React.js 18.x
+Styling: Tailwind CSS 3.x
+Build Tool: Vite
+State Management: React Context API
+Routing: React Router v6
+
+Development Tools
+
+Package Manager: npm/yarn
+Version Control: Git
+Testing: Foundry (smart contracts), Jest (frontend)
+Linting: ESLint, Prettier
+
+
+🏗️ Architecture
+┌─────────────────────────────────────────────────────────┐
+│                    USER LAYER                           │
+│   Admin | Institution | Student | Verifier              │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ↓
+┌─────────────────────────────────────────────────────────┐
+│              FRONTEND (React + Tailwind)                │
+│   4 Portals: Admin | Institution | Student | Verifier   │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ↓
+┌─────────────────────────────────────────────────────────┐
+│           FIREBASE ECOSYSTEM (Backend)                  │
+│  Auth | Firestore | Cloud Functions | Storage           │
+└─────┬──────────────┬──────────────────┬─────────────────┘
+      │              │                  │
+      ↓              ↓                  ↓
+┌──────────┐  ┌─────────────┐  ┌──────────────────┐
+│ Polygon  │  │   Pinata    │  │     Firebase     │
+│Blockchain│  │ IPFS Cloud  │  │     Storage      │
+│ (Hashes) │  │(Documents)  │  │    (Backup)      │
+└──────────┘  └─────────────┘  └──────────────────┘
+
+Data Flow
+Credential Issuance:
+Institution → Upload PDF → Encrypt → Upload to IPFS → Get CID
+                                        ↓
+                                 Calculate Hash
+                                        ↓
+                              Store on Blockchain
+                                        ↓
+                             Save Metadata (Firestore)
+                                        ↓
+                           Backup Copy (Firebase Storage)
+
+Credential Verification:
+Verifier → Upload PDF → Calculate Hash → Query Blockchain
+                                              ↓
+                                    Hash Found & Active?
+                                              ↓
+                              YES → Display Valid Result
+                              NO  → Display Invalid Result
+
+
