@@ -87,9 +87,10 @@ contract TranscriptManager{
 
      function inValidateTranscript(uint256 transcriptId) external onlyVerifiedInstitution{
          Transcript storage t = transcripts[transcriptId];
+        require(t.studentAddress != address(0), "Transcript does not exist");
         require(transcripts[transcriptId].issuedBy == msg.sender, "Only the issuer can invalidate the transcript");
         require(transcripts[transcriptId].status == status.ACTIVE, "Transcript is already invalidated");
-        require(t.studentAddress != address(0), "Transcript does not exist");
+        
         t.status = status.REVOKED;
         emit TranscriptInvalidated(t.studentAddress, block.timestamp, msg.sender);
      }

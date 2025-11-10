@@ -87,7 +87,7 @@ contract institutionRegistry{
    }
 
    
-   function getInstitutionDetais(address _institutionAddress) external view returns(institution memory){
+   function getInstitutionDetails(address _institutionAddress) external view returns(institution memory){
         if (institutions[_institutionAddress].walletAddress == address(0)) {
            revert InstitutionDoesNotExist();
       }  

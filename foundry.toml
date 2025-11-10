@@ -1,6 +1,50 @@
+# foundry.toml
 [profile.default]
 src = "src"
 out = "out"
 libs = ["lib"]
+solc_version = "0.8.26"
+optimizer = true
+optimizer_runs = 200
+via_ir = false
 
-# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+remappings = [
+    "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
+]
+
+# Test configuration
+[profile.default.fuzz]
+runs = 256
+max_test_rejects = 65536
+
+[profile.default.invariant]
+runs = 256
+depth = 15
+fail_on_revert = false
+
+# RPC endpoints
+[rpc_endpoints]
+amoy = "${POLYGON_AMOY_RPC_URL}"
+localhost = "http://127.0.0.1:8545"
+
+# Etherscan API keys for verification
+[etherscan]
+amoy = { key = "${POLYGONSCAN_API_KEY}", chain = 80002, url = "https://api-amoy.polygonscan.com/api" }
+
+# Gas reporting
+[fmt]
+line_length = 120
+tab_width = 4
+bracket_spacing = true
+int_types = "long"
+
+# CI configuration
+[profile.ci]
+fuzz = { runs = 5000 }
+invariant = { runs = 1000 }
+
+# Coverage
+[profile.coverage]
+via_ir = false
