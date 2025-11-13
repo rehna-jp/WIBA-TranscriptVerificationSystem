@@ -12,7 +12,7 @@ export default function Navigation() {
         <div className="flex justify-between items-center h-16">
           <Link href="/" className="flex items-center space-x-3 hover:opacity-80 transition">
             <Shield className="w-8 h-8 text-blue-600" />
-            <span className="text-xl font-bold text-gray-900">CredChain</span>
+            <span className="text-xl font-bold text-gray-900">TranscriptChain</span>
           </Link>
           
           <div className="flex items-center space-x-6">

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { useWeb3 } from '@/contexts/Web3Context';
 import { Shield, ArrowLeft, Plus, AlertCircle } from 'lucide-react';
-import { registerInstitution, getAllInstitutions, suspendInstitution, reactivateInstitution } from '@/services/institutionService';
+import { registerInstitutionInDb, getAllInstitutions, suspendInstitution, reactivateInstitution } from '@/services/institutionService';
 import { isValidAddress } from '@/lib/web3';
 import toast from 'react-hot-toast';
 

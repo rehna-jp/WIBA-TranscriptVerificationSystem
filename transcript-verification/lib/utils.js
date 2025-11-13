@@ -11,12 +11,15 @@ export const formatDate = (timestamp) => {
   });
 };
 
+// Updated to match your contract enum
 export const credentialTypes = {
-  0: 'Bachelor',
-  1: 'Master',
-  2: 'PhD',
-  3: 'Diploma',
+  0: 'Associate Degree',
+  1: 'Bachelor\'s Degree',
+  2: 'Master\'s Degree',
+  3: 'Doctorate (PhD)',
   4: 'Certificate',
+  5: 'Diploma',
+  6: 'Post-Doctorate',
 };
 
 export const credentialStatus = {

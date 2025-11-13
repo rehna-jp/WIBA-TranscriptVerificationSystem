@@ -1,68 +1,94 @@
 import { ethers } from 'ethers';
 
-export const getProvider = () => {
-  if (typeof window !== 'undefined' && window.ethereum) {
-    return new ethers.BrowserProvider(window.ethereum);
+// 🔹 Safe helper to get the actual Ethereum provider (handles multiple)
+const getInjectedProvider = () => {
+  if (typeof window === 'undefined') return null;
+  const eth = window.ethereum;
+  if (!eth) return null;
+
+  // If multiple providers exist, prefer MetaMask
+  if (Array.isArray(eth.providers)) {
+    const metamask = eth.providers.find((p) => p.isMetaMask);
+    return metamask || eth.providers[0];
   }
-  // Fallback to RPC provider
-  return new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_POLYGON_RPC_URL);
+
+  return eth;
 };
 
+// 🔹 Get provider
+export const getProvider = () => {
+  const injected = getInjectedProvider();
+  if (injected) {
+    return new ethers.BrowserProvider(injected);
+  }
+
+  // Fallback to RPC (for read-only actions)
+  return new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL);
+};
+
+// 🔹 Get signer
 export const getSigner = async () => {
-  if (typeof window !== 'undefined' && window.ethereum) {
-    const provider = new ethers.BrowserProvider(window.ethereum);
+  const injected = getInjectedProvider();
+  if (injected) {
+    const provider = new ethers.BrowserProvider(injected);
     return await provider.getSigner();
   }
   throw new Error('No Ethereum provider found');
 };
 
+// 🔹 Connect wallet (main entry)
 export const connectWallet = async () => {
-  if (typeof window !== 'undefined' && window.ethereum) {
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      await provider.send('eth_requestAccounts', []);
-      const signer = await provider.getSigner();
-      const address = await signer.getAddress();
-      const network = await provider.getNetwork();
-      
-      // Check if on correct network
-      if (network.chainId !== BigInt(process.env.NEXT_PUBLIC_CHAIN_ID)) {
-        await switchNetwork();
-      }
-      
-      return { address, provider, signer };
-    } catch (error) {
-      console.error('Error connecting wallet:', error);
-      throw error;
+  const injected = getInjectedProvider();
+  if (!injected) throw new Error('Please install MetaMask or another wallet');
+
+  try {
+    const provider = new ethers.BrowserProvider(injected);
+
+    // Request wallet access
+    await provider.send('eth_requestAccounts', []);
+
+    const signer = await provider.getSigner();
+    const address = await signer.getAddress();
+    const network = await provider.getNetwork();
+
+    const expectedChainId = BigInt(process.env.NEXT_PUBLIC_CHAIN_ID);
+    if (network.chainId !== expectedChainId) {
+      await switchNetwork();
     }
-  } else {
-    throw new Error('Please install MetaMask');
+
+    return { address, provider, signer };
+  } catch (error) {
+    console.error('Error connecting wallet:', error);
+    throw error;
   }
 };
 
+// 🔹 Switch network
 export const switchNetwork = async () => {
+  const injected = getInjectedProvider();
+  if (!injected) throw new Error('No injected provider found');
+
   try {
-    await window.ethereum.request({
+    await injected.request({
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: `0x${parseInt(process.env.NEXT_PUBLIC_CHAIN_ID).toString(16)}` }],
     });
   } catch (switchError) {
-    // Network not added, try to add it
     if (switchError.code === 4902) {
       try {
-        await window.ethereum.request({
+        await injected.request({
           method: 'wallet_addEthereumChain',
           params: [
             {
               chainId: `0x${parseInt(process.env.NEXT_PUBLIC_CHAIN_ID).toString(16)}`,
-              chainName: 'Polygon Mumbai Testnet',
+              chainName: 'Ethereum Sepolia Testnet',
               nativeCurrency: {
-                name: 'MATIC',
-                symbol: 'MATIC',
+                name: 'Ethereum',
+                symbol: 'ETH',
                 decimals: 18,
               },
-              rpcUrls: [process.env.NEXT_PUBLIC_POLYGON_RPC_URL],
-              blockExplorerUrls: ['https://mumbai.polygonscan.com/'],
+              rpcUrls: [process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL],
+              blockExplorerUrls: ['https://sepolia.etherscan.io'],
             },
           ],
         });
@@ -75,11 +101,11 @@ export const switchNetwork = async () => {
   }
 };
 
+// 🔹 Address formatter
 export const formatAddress = (address) => {
   if (!address) return '';
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 };
 
-export const isValidAddress = (address) => {
-  return ethers.isAddress(address);
-};
+// 🔹 Address validation
+export const isValidAddress = (address) => ethers.isAddress(address);
