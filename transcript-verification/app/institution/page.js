@@ -7,7 +7,7 @@ import { useWeb3 } from '@/contexts/Web3Context';
 import { Building, ArrowLeft, Upload, AlertCircle, Search, FileText } from 'lucide-react';
 import { issueCredential, getCredentialsByInstitution, revokeCredentialInDb } from '@/services/credentialService';
 import { isInstitutionVerified } from '@/lib/contracts';
-import { isValidAddress } from '@/lib/web3';
+import { isAddress } from 'viem';
 import { validateFile, credentialTypes } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
@@ -88,7 +88,7 @@ export default function InstitutionPage() {
       return;
     }
 
-    if (!isValidAddress(formData.studentAddress)) {
+    if (!isAddress(formData.studentAddress)) {
       toast.error('Invalid student wallet address');
       return;
     }

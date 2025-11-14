@@ -1,13 +1,13 @@
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { Web3Provider } from '@/contexts/Web3Context';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { Toaster } from 'react-hot-toast';
+import {Providers} from './providers';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: 'CredChain - Decentralized Transcript Verification',
+  title: 'TranscriptChain - Decentralized Transcript Verification',
   description: 'Blockchain-powered credential verification system',
 };
 
@@ -16,7 +16,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          <Web3Provider>
+          <Providers>
             {children}
             <Toaster
               position="top-right"
@@ -42,7 +42,7 @@ export default function RootLayout({ children }) {
                 },
               }}
             />
-          </Web3Provider>
+          </Providers>
         </AuthProvider>
       </body>
     </html>

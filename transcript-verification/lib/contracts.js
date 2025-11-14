@@ -1,107 +1,106 @@
-import { ethers } from 'ethers';
-import { getProvider, getSigner } from './web3';
+import { config } from './wagmi';
+import { writeContract, readContract, waitForTransactionReceipt } from '@wagmi/core';
 
-// Import ABI files (you'll need to place actual ABIs here)
+const INSTITUTION_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_INSTITUTION_REGISTRY_ADDRESS;
+const TRANSCRIPT_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_TRANSCRIPT_MANAGER_ADDRESS;
+
+// Import ABI files
 import InstitutionRegistryABI from '../contracts/InstitutionRegistry.json';
 import TranscriptVerificationABI from '../contracts/TranscriptVerification.json';
 
-const INSTITUTION_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_INSTITUTION_REGISTRY_ADDRESS;
-const TRANSCRIPT_VERIFICATION_ADDRESS = process.env.NEXT_PUBLIC_TRANSCRIPT_VERIFICATION_ADDRESS;
+// Contract configurations
+export const getInstitutionRegistryContract = () => ({
+  address: INSTITUTION_REGISTRY_ADDRESS,
+  abi: InstitutionRegistryABI,
+});
 
-// Institution Registry Contract
-export const getInstitutionRegistryContract = async (needsSigner = false) => {
-  const providerOrSigner = needsSigner ? await getSigner() : getProvider();
-  return new ethers.Contract(
-    INSTITUTION_REGISTRY_ADDRESS,
-    InstitutionRegistryABI.abi,
-    providerOrSigner
-  );
-};
+export const getTranscriptManagerContract = () => ({
+  address: TRANSCRIPT_MANAGER_ADDRESS,
+  abi: TranscriptVerificationABI,
+});
 
-// Transcript Verification Contract
-export const getTranscriptVerificationContract = async (needsSigner = false) => {
-  const providerOrSigner = needsSigner ? await getSigner() : getProvider();
-  return new ethers.Contract(
-    TRANSCRIPT_VERIFICATION_ADDRESS,
-    TranscriptVerificationABI.abi,
-    providerOrSigner
-  );
-};
+// Institution Registry Functions
 
-/**
- * Register a new institution (called by institution itself)
- */
 export const registerInstitution = async (name, country, accreditedURL, email) => {
   try {
-    const contract = await getInstitutionRegistryContract(true);
-    const tx = await contract.registerInstitution(name, country, accreditedURL, email);
-    await tx.wait();
-    return tx;
+    const { hash } = await writeContract(getConfig(), {
+      ...getInstitutionRegistryContract(),
+      functionName: 'registerInstitution',
+      args: [name, country, accreditedURL, email],
+    });
+
+    const receipt = await waitForTransactionReceipt(getConfig(), { hash });
+    return receipt;
   } catch (error) {
     console.error('Error registering institution:', error);
     throw error;
   }
 };
 
-/**
- * Verify an institution (admin only)
- */
 export const verifyInstitution = async (institutionAddress) => {
   try {
-    const contract = await getInstitutionRegistryContract(true);
-    const tx = await contract.VerifyInstitution(institutionAddress);
-    await tx.wait();
-    return tx;
+    const { hash } = await writeContract(getConfig(), {
+      ...getInstitutionRegistryContract(),
+      functionName: 'VerifyInstitution',
+      args: [institutionAddress],
+    });
+
+    const receipt = await waitForTransactionReceipt(getConfig(), { hash });
+    return receipt;
   } catch (error) {
     console.error('Error verifying institution:', error);
     throw error;
   }
 };
 
-/**
- * Suspend an institution (admin only)
- */
 export const suspendInstitution = async (institutionAddress) => {
   try {
-    const contract = await getInstitutionRegistryContract(true);
-    const tx = await contract.suspendInstitution(institutionAddress);
-    await tx.wait();
-    return tx;
+    const { hash } = await writeContract(getConfig(), {
+      ...getInstitutionRegistryContract(),
+      functionName: 'suspendInstitution',
+      args: [institutionAddress],
+    });
+
+    const receipt = await waitForTransactionReceipt(getConfig(), { hash });
+    return receipt;
   } catch (error) {
     console.error('Error suspending institution:', error);
     throw error;
   }
 };
 
-/**
- * Check if institution is verified
- */
 export const isInstitutionVerified = async (institutionAddress) => {
   try {
-    const contract = await getInstitutionRegistryContract(false);
-    return await contract.isInstitutionVerified(institutionAddress);
+    const result = await readContract(getConfig(), {
+      ...getInstitutionRegistryContract(),
+      functionName: 'isInstitutionVerified',
+      args: [institutionAddress],
+    });
+    return result;
   } catch (error) {
     console.error('Error checking institution verification:', error);
     return false;
   }
 };
 
-/**
- * Get institution details
- */
 export const getInstitutionDetails = async (institutionAddress) => {
   try {
-    const contract = await getInstitutionRegistryContract(false);
-    const details = await contract.getInstitutionDetails(institutionAddress);
+    const institution = await readContract(getConfig(), {
+      ...getInstitutionRegistryContract(),
+      functionName: 'getInstitutionDetails',
+      args: [institutionAddress],
+    });
+
+    // Convert BigInt to Number where needed
     return {
-      id: Number(details.id),
-      walletAddress: details.walletAddress,
-      name: details.name,
-      country: details.country,
-      accreditedURL: details.accreditedURL,
-      isVerified: details.isVerified,
-      dateRegistered: Number(details.dateRegistered),
-      email: details.email
+      id: Number(institution.id),
+      walletAddress: institution.walletAddress,
+      name: institution.name,
+      country: institution.country,
+      accreditedURL: institution.accreditedURL,
+      isVerified: institution.isVerified,
+      dateRegistered: Number(institution.dateRegistered),
+      email: institution.email
     };
   } catch (error) {
     console.error('Error getting institution details:', error);
@@ -109,27 +108,48 @@ export const getInstitutionDetails = async (institutionAddress) => {
   }
 };
 
-/**
- * Get total number of institutions
- */
-export const getNumberOfInstitutions = async () => {
+export const getInstitutionStats = async () => {
   try {
-    const contract = await getInstitutionRegistryContract(false);
-    const count = await contract.numberOfInstitutions();
-    return Number(count);
+    const [numberOfInstitutions, numberOfVerifiedInstitutions] = await Promise.all([
+      readContract(getConfig(), {
+        ...getInstitutionRegistryContract(),
+        functionName: 'numberOfInstitutions',
+      }),
+      readContract(getConfig(), {
+        ...getInstitutionRegistryContract(),
+        functionName: 'numberOfVerifiedInstitutions',
+      })
+    ]);
+
+    return {
+      totalInstitutions: Number(numberOfInstitutions),
+      verifiedInstitutions: Number(numberOfVerifiedInstitutions)
+    };
   } catch (error) {
-    console.error('Error getting institution count:', error);
-    return 0;
+    console.error('Error getting institution stats:', error);
+    return { totalInstitutions: 0, verifiedInstitutions: 0 };
   }
 };
 
-// ==========================================
-// TRANSCRIPT MANAGER FUNCTIONS
-// ==========================================
+// Transcript Manager Functions
 
-/**
- * Issue a transcript (verified institutions only)
- */
+// Degree type enum mapping (matches your smart contract)
+export const DegreeType = {
+  ASSOCIATE: 0,
+  BACHELOR: 1,
+  MASTER: 2,
+  DOCTORATE: 3,
+  CERTIFICATE: 4,
+  DIPLOMA: 5,
+  POSTDOCTORATE: 6
+};
+
+// Status enum mapping
+export const TranscriptStatus = {
+  ACTIVE: 0,
+  REVOKED: 1
+};
+
 export const issueTranscript = async (
   studentId,
   ipfsCid,
@@ -139,16 +159,13 @@ export const issueTranscript = async (
   graduationYear
 ) => {
   try {
-    const contract = await getTranscriptManagerContract(true);
-    const tx = await contract.issueTranscripts(
-      studentId,
-      ipfsCid,
-      documentHash,
-      degreeType,
-      studentAddress,
-      graduationYear
-    );
-    const receipt = await tx.wait();
+    const { hash } = await writeContract(getConfig(), {
+      ...getTranscriptManagerContract(),
+      functionName: 'issueTranscripts',
+      args: [studentId, ipfsCid, documentHash, degreeType, studentAddress, graduationYear],
+    });
+
+    const receipt = await waitForTransactionReceipt(getConfig(), { hash });
     return receipt;
   } catch (error) {
     console.error('Error issuing transcript:', error);
@@ -156,13 +173,15 @@ export const issueTranscript = async (
   }
 };
 
-/**
- * Verify a transcript by IPFS CID
- */
 export const verifyTranscript = async (ipfsCid) => {
   try {
-    const contract = await getTranscriptManagerContract(false);
-    const transcript = await contract.verifyTranscript(ipfsCid);
+    const transcript = await readContract(getConfig(), {
+      ...getTranscriptManagerContract(),
+      functionName: 'verifyTranscript',
+      args: [ipfsCid],
+    });
+
+    // Convert BigInt to Number where needed
     return {
       id: Number(transcript.id),
       studentId: transcript.studentId,
@@ -181,28 +200,30 @@ export const verifyTranscript = async (ipfsCid) => {
   }
 };
 
-/**
- * Invalidate/Revoke a transcript
- */
 export const invalidateTranscript = async (transcriptId) => {
   try {
-    const contract = await getTranscriptManagerContract(true);
-    const tx = await contract.inValidateTranscript(transcriptId);
-    await tx.wait();
-    return tx;
+    const { hash } = await writeContract(getConfig(), {
+      ...getTranscriptManagerContract(),
+      functionName: 'inValidateTranscript',
+      args: [transcriptId],
+    });
+
+    const receipt = await waitForTransactionReceipt(getConfig(), { hash });
+    return receipt;
   } catch (error) {
     console.error('Error invalidating transcript:', error);
     throw error;
   }
 };
 
-/**
- * Get transcript details by ID
- */
 export const getTranscriptDetails = async (transcriptId) => {
   try {
-    const contract = await getTranscriptManagerContract(false);
-    const transcript = await contract.getTranscriptDetails(transcriptId);
+    const transcript = await readContract(getConfig(), {
+      ...getTranscriptManagerContract(),
+      functionName: 'getTranscriptDetails',
+      args: [transcriptId],
+    });
+
     return {
       id: Number(transcript.id),
       studentId: transcript.studentId,
@@ -221,13 +242,14 @@ export const getTranscriptDetails = async (transcriptId) => {
   }
 };
 
-/**
- * Get all transcripts for a student
- */
 export const getStudentTranscripts = async (studentAddress) => {
   try {
-    const contract = await getTranscriptManagerContract(false);
-    const transcripts = await contract.getStudentTranscripts(studentAddress);
+    const transcripts = await readContract(getConfig(), {
+      ...getTranscriptManagerContract(),
+      functionName: 'getStudentTranscripts',
+      args: [studentAddress],
+    });
+
     return transcripts.map(t => ({
       id: Number(t.id),
       studentId: t.studentId,
@@ -246,16 +268,47 @@ export const getStudentTranscripts = async (studentAddress) => {
   }
 };
 
-/**
- * Get total transcript count
- */
+export const checkCIDExists = async (cid) => {
+  try {
+    const exists = await readContract(getConfig(), {
+      ...getTranscriptManagerContract(),
+      functionName: 'existingCIDs',
+      args: [cid],
+    });
+    return exists;
+  } catch (error) {
+    console.error('Error checking CID:', error);
+    return false;
+  }
+};
+
 export const getTranscriptCount = async () => {
   try {
-    const contract = await getTranscriptManagerContract(false);
-    const count = await contract.transcriptCount();
+    const count = await readContract(getConfig(), {
+      ...getTranscriptManagerContract(),
+      functionName: 'transcriptCount',
+    });
     return Number(count);
   } catch (error) {
     console.error('Error getting transcript count:', error);
     return 0;
   }
+};
+
+// Utility functions for enum conversion
+export const getDegreeTypeName = (degreeType) => {
+  const names = [
+    'ASSOCIATE',
+    'BACHELOR', 
+    'MASTER',
+    'DOCTORATE',
+    'CERTIFICATE',
+    'DIPLOMA',
+    'POSTDOCTORATE'
+  ];
+  return names[degreeType] || 'UNKNOWN';
+};
+
+export const getStatusName = (status) => {
+  return status === 0 ? 'ACTIVE' : 'REVOKED';
 };
