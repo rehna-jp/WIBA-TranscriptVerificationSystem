@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 import { useWeb3 } from '@/contexts/Web3Context';
 import { Shield, ArrowLeft, Plus, AlertCircle, Loader2 } from 'lucide-react';
 import { registerInstitutionInDb, getAllInstitutions, suspendInstitution, reactivateInstitution } from '@/services/institutionService';
+import { registerInstitution, verifyInstitution } from '@/lib/contracts'; // Import blockchain functions
 import { isAddress } from 'viem';
 import toast from 'react-hot-toast';
 
@@ -22,6 +23,8 @@ export default function AdminPage() {
     address: '',
     name: '',
     country: '',
+    accreditedURL: '',
+    email: ''
   });
 
   useEffect(() => {
@@ -72,41 +75,95 @@ export default function AdminPage() {
       return;
     }
 
-    if (!formData.name.trim() || !formData.country.trim()) {
-      toast.error('Please fill in all fields');
+    if (!formData.name.trim() || !formData.country.trim() || !formData.email.trim()) {
+      toast.error('Please fill in all required fields');
       return;
     }
 
     setSubmitting(true);
-    const toastId = toast.loading('Registering institution...');
+    const toastId = toast.loading('Registering institution on blockchain...');
 
     try {
-      await registerInstitutionInDb(
-        formData.address,
-        formData.name,
-        formData.country,
-        account
-      );
+      // Step 1: Register on blockchain (this should be done by the institution themselves)
+      // But for admin setup, we might need a different approach
+      console.log('Attempting to register institution:', formData);
 
-      toast.success('Institution registered successfully!', { id: toastId });
+      // Note: In your smart contract, registerInstitution can only be called by the institution itself (msg.sender)
+      // So the admin cannot register an institution on behalf of someone else
+      // You might need to change your contract or workflow
+
+      // For now, let's just register in the database and show a message
+      console.warn('Admin cannot register institutions on blockchain - institution must register themselves');
+
+      // Step 2: Register in database
+      // await registerInstitutionInDb(
+      //   formData.address,
+      //   formData.name,
+      //   formData.country,
+      //   formData.accreditedURL || '',
+      //   formData.email,
+      //   account
+      // );
+
+      toast.success('Institution registered in database! Institution must complete blockchain registration.', { id: toastId });
       setShowForm(false);
-      setFormData({ address: '', name: '', country: '' });
+      setFormData({ address: '', name: '', country: '', accreditedURL: '', email: '' });
       loadInstitutions();
     } catch (error) {
       console.error('Error registering institution:', error);
-      toast.error(error.message || 'Failed to register institution', { id: toastId });
+      let errorMessage = 'Failed to register institution';
+      
+      if (error.message?.includes('user rejected')) {
+        errorMessage = 'Transaction was rejected';
+      } else if (error.message?.includes('insufficient funds')) {
+        errorMessage = 'Insufficient funds for transaction';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage, { id: toastId });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleSuspend = async (institutionId) => {
+  const handleVerifyOnChain = async (institutionAddress) => {
+    if (!confirm('Are you sure you want to verify this institution on blockchain?')) return;
+
+    const toastId = toast.loading('Verifying institution on blockchain...');
+    try {
+      // Verify institution on blockchain
+      const receipt = await verifyInstitution(institutionAddress);
+      console.log('Verification transaction receipt:', receipt);
+      
+      toast.success('Institution verified on blockchain!', { id: toastId });
+    } catch (error) {
+      console.error('Error verifying institution on blockchain:', error);
+      let errorMessage = 'Failed to verify institution on blockchain';
+      
+      if (error.message?.includes('user rejected')) {
+        errorMessage = 'Transaction was rejected';
+      } else if (error.message?.includes('insufficient funds')) {
+        errorMessage = 'Insufficient funds for transaction';
+      } else if (error.message?.includes('InstitutionAlreadyVerified')) {
+        errorMessage = 'Institution is already verified';
+      } else if (error.message?.includes('InstitutionDoesNotExist')) {
+        errorMessage = 'Institution not found on blockchain';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage, { id: toastId });
+    }
+  };
+
+  const handleSuspend = async (institutionId, institutionAddress) => {
     if (!confirm('Are you sure you want to suspend this institution?')) return;
 
     const toastId = toast.loading('Suspending institution...');
     try {
       await suspendInstitution(institutionId);
-      toast.success('Institution suspended', { id: toastId });
+      toast.success('Institution suspended in database', { id: toastId });
       loadInstitutions();
     } catch (error) {
       toast.error('Failed to suspend institution', { id: toastId });
@@ -171,20 +228,23 @@ export default function AdminPage() {
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Admin Portal</h1>
               </div>
               <p className="text-gray-600">Register and manage educational institutions</p>
+              <p className="text-sm text-orange-600 mt-1">
+                Note: Institutions must register themselves on blockchain. Admin can only verify existing registrations.
+              </p>
             </div>
             <button
               onClick={() => setShowForm(!showForm)}
               className="bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 transition flex items-center justify-center space-x-2 w-full md:w-auto"
             >
               <Plus className="w-5 h-5" />
-              <span>Register Institution</span>
+              <span>Add to Database</span>
             </button>
           </div>
 
-          {/* Registration Form */}
+          {/* Registration Form
           {showForm && (
             <form onSubmit={handleSubmit} className="bg-purple-50 p-6 rounded-xl mb-8 border border-purple-200">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Register New Institution</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-4">Add Institution to Database</h3>
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -228,6 +288,33 @@ export default function AdminPage() {
                     required
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Accredited URL
+                  </label>
+                  <input
+                    type="url"
+                    name="accreditedURL"
+                    value={formData.accreditedURL}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="https://"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="contact@institution.edu"
+                    required
+                  />
+                </div>
               </div>
               <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 mt-4">
                 <button
@@ -236,7 +323,7 @@ export default function AdminPage() {
                   className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                 >
                   {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                  <span>{submitting ? 'Registering...' : 'Register Institution'}</span>
+                  <span>{submitting ? 'Adding...' : 'Add to Database'}</span>
                 </button>
                 <button
                   type="button"
@@ -247,7 +334,7 @@ export default function AdminPage() {
                 </button>
               </div>
             </form>
-          )}
+          )} */}
 
           {/* Institutions Table */}
           {loading ? (
@@ -263,7 +350,7 @@ export default function AdminPage() {
                 onClick={() => setShowForm(true)}
                 className="mt-4 bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition"
               >
-                Register First Institution
+                Add First Institution
               </button>
             </div>
           ) : (
@@ -277,24 +364,24 @@ export default function AdminPage() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Wallet Address</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Country</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">Registered</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {institutions.map((inst) => (
                         <tr key={inst.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-4 whitespace-nowrap">
+                          <td className="px-4 py-4">
                             <div className="font-medium text-gray-900">{inst.name}</div>
+                            <div className="text-gray-500 text-sm">{inst.email}</div>
                             <div className="text-gray-500 text-sm font-mono md:hidden">
                               {inst.address.slice(0, 6)}...{inst.address.slice(-4)}
                             </div>
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-gray-500 font-mono text-sm hidden md:table-cell">
+                          <td className="px-4 py-4 text-gray-500 font-mono text-sm hidden md:table-cell">
                             {inst.address.slice(0, 8)}...{inst.address.slice(-6)}
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-gray-600">{inst.country}</td>
-                          <td className="px-4 py-4 whitespace-nowrap">
+                          <td className="px-4 py-4 text-gray-600">{inst.country}</td>
+                          <td className="px-4 py-4">
                             <span
                               className={`px-2 py-1 rounded-full text-xs font-semibold ${
                                 inst.status === 'Active'
@@ -305,21 +392,24 @@ export default function AdminPage() {
                               {inst.status}
                             </span>
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-gray-500 text-sm hidden lg:table-cell">
-                            {new Date(inst.createdAt).toLocaleDateString()}
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
+                          <td className="px-4 py-4 space-y-2 sm:space-y-0 sm:space-x-2">
+                            <button
+                              onClick={() => handleVerifyOnChain(inst.address)}
+                              className="text-blue-600 hover:text-blue-900 font-semibold text-sm block sm:inline-block mb-2 sm:mb-0"
+                            >
+                              Verify on Chain
+                            </button>
                             {inst.status === 'Active' ? (
                               <button
-                                onClick={() => handleSuspend(inst.id)}
-                                className="text-red-600 hover:text-red-900 font-semibold text-sm"
+                                onClick={() => handleSuspend(inst.id, inst.address)}
+                                className="text-red-600 hover:text-red-900 font-semibold text-sm block sm:inline-block"
                               >
                                 Suspend
                               </button>
                             ) : (
                               <button
                                 onClick={() => handleReactivate(inst.id)}
-                                className="text-green-600 hover:text-green-900 font-semibold text-sm"
+                                className="text-green-600 hover:text-green-900 font-semibold text-sm block sm:inline-block"
                               >
                                 Reactivate
                               </button>

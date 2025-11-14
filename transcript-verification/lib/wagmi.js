@@ -14,6 +14,8 @@ export const config = getDefaultConfig({
   ssr: true, // If you're using Next.js SSR
 });
 
+
+
 // Export for use in providers
 export const wagmiConfig = config;
 export const chains = [mainnet, polygon, arbitrum, sepolia];

@@ -1,12 +1,19 @@
-import { config } from './wagmi';
+import {  config } from './wagmi';
 import { writeContract, readContract, waitForTransactionReceipt } from '@wagmi/core';
 
 const INSTITUTION_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_INSTITUTION_REGISTRY_ADDRESS;
 const TRANSCRIPT_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_TRANSCRIPT_MANAGER_ADDRESS;
 
 // Import ABI files
-import InstitutionRegistryABI from '../contracts/InstitutionRegistry.json';
-import TranscriptVerificationABI from '../contracts/TranscriptVerification.json';
+// Import contract artifacts (these are the full Hardhat/Truffle artifacts)
+import InstitutionRegistryArtifact from '../contracts/InstitutionRegistry.json';
+import TranscriptVerificationArtifact from '../contracts/TranscriptVerification.json';
+
+// Extract ABI from artifacts - since your files are in Hardhat/Truffle format
+const InstitutionRegistryABI = InstitutionRegistryArtifact.abi;
+const TranscriptVerificationABI = TranscriptVerificationArtifact.abi;
+
+
 
 // Contract configurations
 export const getInstitutionRegistryContract = () => ({
@@ -23,13 +30,14 @@ export const getTranscriptManagerContract = () => ({
 
 export const registerInstitution = async (name, country, accreditedURL, email) => {
   try {
-    const { hash } = await writeContract(getConfig(), {
+    const { hash } = await writeContract(config, {
       ...getInstitutionRegistryContract(),
       functionName: 'registerInstitution',
       args: [name, country, accreditedURL, email],
+      gas: 16000000n, 
     });
 
-    const receipt = await waitForTransactionReceipt(getConfig(), { hash });
+    const receipt = await waitForTransactionReceipt(config, { hash });
     return receipt;
   } catch (error) {
     console.error('Error registering institution:', error);
@@ -39,13 +47,13 @@ export const registerInstitution = async (name, country, accreditedURL, email) =
 
 export const verifyInstitution = async (institutionAddress) => {
   try {
-    const { hash } = await writeContract(getConfig(), {
+    const { hash } = await writeContract(config, {
       ...getInstitutionRegistryContract(),
       functionName: 'VerifyInstitution',
       args: [institutionAddress],
     });
 
-    const receipt = await waitForTransactionReceipt(getConfig(), { hash });
+    const receipt = await waitForTransactionReceipt(config, { hash });
     return receipt;
   } catch (error) {
     console.error('Error verifying institution:', error);
@@ -55,13 +63,13 @@ export const verifyInstitution = async (institutionAddress) => {
 
 export const suspendInstitution = async (institutionAddress) => {
   try {
-    const { hash } = await writeContract(getConfig(), {
+    const { hash } = await writeContract(config, {
       ...getInstitutionRegistryContract(),
       functionName: 'suspendInstitution',
       args: [institutionAddress],
     });
 
-    const receipt = await waitForTransactionReceipt(getConfig(), { hash });
+    const receipt = await waitForTransactionReceipt(config, { hash });
     return receipt;
   } catch (error) {
     console.error('Error suspending institution:', error);
@@ -71,7 +79,7 @@ export const suspendInstitution = async (institutionAddress) => {
 
 export const isInstitutionVerified = async (institutionAddress) => {
   try {
-    const result = await readContract(getConfig(), {
+    const result = await readContract(config, {
       ...getInstitutionRegistryContract(),
       functionName: 'isInstitutionVerified',
       args: [institutionAddress],
@@ -79,13 +87,36 @@ export const isInstitutionVerified = async (institutionAddress) => {
     return result;
   } catch (error) {
     console.error('Error checking institution verification:', error);
+    
+    // Handle the specific InstitutionDoesNotExist error
+    if (error.message?.includes('InstitutionDoesNotExist') || 
+        error.shortMessage?.includes('InstitutionDoesNotExist')) {
+      console.log('Institution not registered yet');
+      return false;
+    }
+    
+    // For other errors, still return false but log the error
     return false;
+  }
+};
+
+export const doesInstitutionExist = async (institutionAddress) => {
+  try {
+    // Try to get institution details - if it fails, institution doesn't exist
+    await getInstitutionDetails(institutionAddress);
+    return true;
+  } catch (error) {
+    if (error.message?.includes('InstitutionDoesNotExist') || 
+        error.shortMessage?.includes('InstitutionDoesNotExist')) {
+      return false;
+    }
+    throw error; // Re-throw other errors
   }
 };
 
 export const getInstitutionDetails = async (institutionAddress) => {
   try {
-    const institution = await readContract(getConfig(), {
+    const institution = await readContract(config, {
       ...getInstitutionRegistryContract(),
       functionName: 'getInstitutionDetails',
       args: [institutionAddress],
@@ -111,11 +142,11 @@ export const getInstitutionDetails = async (institutionAddress) => {
 export const getInstitutionStats = async () => {
   try {
     const [numberOfInstitutions, numberOfVerifiedInstitutions] = await Promise.all([
-      readContract(getConfig(), {
+      readContract(config, {
         ...getInstitutionRegistryContract(),
         functionName: 'numberOfInstitutions',
       }),
-      readContract(getConfig(), {
+      readContract(config, {
         ...getInstitutionRegistryContract(),
         functionName: 'numberOfVerifiedInstitutions',
       })
@@ -159,13 +190,13 @@ export const issueTranscript = async (
   graduationYear
 ) => {
   try {
-    const { hash } = await writeContract(getConfig(), {
+    const { hash } = await writeContract(config, {
       ...getTranscriptManagerContract(),
       functionName: 'issueTranscripts',
       args: [studentId, ipfsCid, documentHash, degreeType, studentAddress, graduationYear],
     });
 
-    const receipt = await waitForTransactionReceipt(getConfig(), { hash });
+    const receipt = await waitForTransactionReceipt(config, { hash });
     return receipt;
   } catch (error) {
     console.error('Error issuing transcript:', error);
@@ -175,7 +206,7 @@ export const issueTranscript = async (
 
 export const verifyTranscript = async (ipfsCid) => {
   try {
-    const transcript = await readContract(getConfig(), {
+    const transcript = await readContract(config, {
       ...getTranscriptManagerContract(),
       functionName: 'verifyTranscript',
       args: [ipfsCid],
@@ -202,13 +233,13 @@ export const verifyTranscript = async (ipfsCid) => {
 
 export const invalidateTranscript = async (transcriptId) => {
   try {
-    const { hash } = await writeContract(getConfig(), {
+    const { hash } = await writeContract(config, {
       ...getTranscriptManagerContract(),
       functionName: 'inValidateTranscript',
       args: [transcriptId],
     });
 
-    const receipt = await waitForTransactionReceipt(getConfig(), { hash });
+    const receipt = await waitForTransactionReceipt(config, { hash });
     return receipt;
   } catch (error) {
     console.error('Error invalidating transcript:', error);
@@ -218,7 +249,7 @@ export const invalidateTranscript = async (transcriptId) => {
 
 export const getTranscriptDetails = async (transcriptId) => {
   try {
-    const transcript = await readContract(getConfig(), {
+    const transcript = await readContract(config, {
       ...getTranscriptManagerContract(),
       functionName: 'getTranscriptDetails',
       args: [transcriptId],
@@ -244,7 +275,7 @@ export const getTranscriptDetails = async (transcriptId) => {
 
 export const getStudentTranscripts = async (studentAddress) => {
   try {
-    const transcripts = await readContract(getConfig(), {
+    const transcripts = await readContract(config, {
       ...getTranscriptManagerContract(),
       functionName: 'getStudentTranscripts',
       args: [studentAddress],
@@ -270,7 +301,7 @@ export const getStudentTranscripts = async (studentAddress) => {
 
 export const checkCIDExists = async (cid) => {
   try {
-    const exists = await readContract(getConfig(), {
+    const exists = await readContract(config, {
       ...getTranscriptManagerContract(),
       functionName: 'existingCIDs',
       args: [cid],
@@ -284,7 +315,7 @@ export const checkCIDExists = async (cid) => {
 
 export const getTranscriptCount = async () => {
   try {
-    const count = await readContract(getConfig(), {
+    const count = await readContract(config, {
       ...getTranscriptManagerContract(),
       functionName: 'transcriptCount',
     });

@@ -154,7 +154,7 @@ export default function AdminPortal() {
       </div>
 
       {/* Registration Form */}
-      {showForm && (
+      {/* {showForm && (
         <form onSubmit={handleSubmit} className="bg-purple-50 p-6 rounded-xl border border-purple-200 animate-slide-up">
           <h3 className="text-xl font-bold text-gray-900 mb-4">Register New Institution</h3>
           <div className="grid md:grid-cols-2 gap-4">
@@ -218,7 +218,7 @@ export default function AdminPortal() {
             </button>
           </div>
         </form>
-      )}
+      )} */}
 
       {/* Institutions Table */}
       {loading ? (
