@@ -1,16 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract institutionRegistry{
-
-    address immutable i_admin;
-
-    constructor (address admin){
-      i_admin = admin;
-    }
+contract institutionRegistry {
+    address public immutable admin;
     
-    struct institution{
-        uint id;
+    struct Institution {
+        uint256 id;
         address walletAddress;
         string name;
         string country;
@@ -19,78 +14,92 @@ contract institutionRegistry{
         uint256 dateRegistered;
         string email;
     }
-   mapping(address => institution) institutions;
-   uint256 public numberOfInstitutions;
-   uint256 public numberOfVerifiedInstitutions;
+    
+    mapping(address => Institution) public institutions;
+    uint256 public numberOfInstitutions;
+    uint256 public numberOfVerifiedInstitutions;
 
-   event InstitutionRegistered(address indexed _walletAddress, string _name, string _country, string _accreditedURL, string email);
-   event InstitutionVerified(address indexed _walletAddress, string _name, string _country, string _accreditedURL, string email);
-   event InstitutionSuspended(address indexed _walletAddress, string _name, string _country, string _accreditedURL, string email);
+    event InstitutionRegistered(address indexed walletAddress, uint256 id);
+    event InstitutionVerified(address indexed walletAddress);
+    event InstitutionSuspended(address indexed walletAddress);
 
-   modifier onlyAdmin(){
-        require(msg.sender == i_admin, "Only the admin can call this function");
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin");
         _;
-   }
+    }
 
-   error InstitutionDoesNotExist();
-   error InstitutionAlreadyVerified();
-   error InstitutionAlreadyRegistered();
-   
-   function registerInstitution(string memory _name, string memory _country, string memory _accreditedURL,  string memory email) external {
+    error InstitutionAlreadyRegistered();
+    error InstitutionAlreadyVerified();
+    error InstitutionDoesNotExist();
+
+    constructor(address _admin) {
+        admin = _admin;
+    }
+
+    function registerInstitution(
+        string calldata _name,
+        string calldata _country,
+        string calldata _accreditedURL,
+        string calldata _email
+    ) external {
+        // Check if already registered (cheaper than storage read)
         if (institutions[msg.sender].walletAddress != address(0)) {
             revert InstitutionAlreadyRegistered();
         }
-        numberOfInstitutions++;
-        institutions[msg.sender] = institution({
-            id: numberOfInstitutions,
+        
+        // Use existing counter (no need for separate increment)
+        uint256 newId = numberOfInstitutions + 1;
+        numberOfInstitutions = newId;
+        
+        institutions[msg.sender] = Institution({
+            id: newId,
             walletAddress: msg.sender,
             name: _name,
             country: _country,
             accreditedURL: _accreditedURL,
             isVerified: false,
             dateRegistered: block.timestamp,
-            email: email
-        } );
+            email: _email
+        });
 
-        emit InstitutionRegistered(msg.sender, _name, _country, _accreditedURL, email);
-   }
+        // Emit minimal event data
+        emit InstitutionRegistered(msg.sender, newId);
+    }
 
-   function VerifyInstitution(address _institutionAddress) external onlyAdmin {
-      if (institutions[_institutionAddress].walletAddress == address(0)) {
-           revert InstitutionDoesNotExist();
-      }
-      if (institutions[_institutionAddress].isVerified == true)  {
-         revert InstitutionAlreadyVerified();
-      }
+    function verifyInstitution(address _institutionAddress) external onlyAdmin {
+        Institution storage inst = institutions[_institutionAddress];
+        if (inst.walletAddress == address(0)) revert InstitutionDoesNotExist();
+        if (inst.isVerified) revert InstitutionAlreadyVerified();
 
-      institution memory inst = institutions[_institutionAddress];
+        inst.isVerified = true;
+        numberOfVerifiedInstitutions++;
+        
+        emit InstitutionVerified(_institutionAddress);
+    }
 
-      numberOfVerifiedInstitutions++;
-      institutions[_institutionAddress].isVerified = true;
-      emit InstitutionVerified(_institutionAddress, inst.name, inst.country, inst.accreditedURL, inst.email);
-   }
+    function suspendInstitution(address _institutionAddress) external onlyAdmin {
+        Institution storage inst = institutions[_institutionAddress];
+        if (inst.walletAddress == address(0)) revert InstitutionDoesNotExist();
+        
+        if (inst.isVerified) {
+            inst.isVerified = false;
+            numberOfVerifiedInstitutions--;
+        }
+        
+        emit InstitutionSuspended(_institutionAddress);
+    }
 
-   function suspendInstitution(address _institutionAddress) external onlyAdmin {
-       institutions[_institutionAddress].isVerified = false;
-       numberOfVerifiedInstitutions--;
-
-       institution memory inst = institutions[_institutionAddress];
-       emit InstitutionSuspended(_institutionAddress, inst.name, inst.country, inst.accreditedURL, inst.email);
-
-   }
-
-   function isInstitutionVerified(address _institutionAddress) external view returns (bool) { 
-       if (institutions[_institutionAddress].walletAddress == address(0)) {
-           revert InstitutionDoesNotExist();
-      }  
-       return institutions[_institutionAddress].isVerified;
-   }
-
-   
-   function getInstitutionDetails(address _institutionAddress) external view returns(institution memory){
+    function isInstitutionVerified(address _institutionAddress) external view returns (bool) {
         if (institutions[_institutionAddress].walletAddress == address(0)) {
-           revert InstitutionDoesNotExist();
-      }  
-      return institutions[_institutionAddress];
-   }
+            revert InstitutionDoesNotExist();
+        }
+        return institutions[_institutionAddress].isVerified;
+    }
+
+    function getInstitutionDetails(address _institutionAddress) external view returns(Institution memory) {
+        if (institutions[_institutionAddress].walletAddress == address(0)) {
+            revert InstitutionDoesNotExist();
+        }
+        return institutions[_institutionAddress];
+    }
 }

@@ -3,112 +3,111 @@ pragma solidity ^0.8.20;
 
 import {institutionRegistry} from './institutionRegistry.sol';
 
-contract TranscriptManager{
-     institutionRegistry public registry;
-     constructor (address _registryAddress) {
-         registry = institutionRegistry(_registryAddress);
-     }
+contract TranscriptManager {
+    institutionRegistry public immutable registry;
+    
+    enum Status { ACTIVE, REVOKED }
+    enum DegreeType { ASSOCIATE, BACHELOR, MASTER, DOCTORATE, CERTIFICATE, DIPLOMA, POSTDOCTORATE }
 
-     error TranscriptDoesNotExist();
-
-     enum status{ACTIVE, REVOKED}
-     enum degreeType {ASSOCIATE, BACHELOR, MASTER, DOCTORATE, CERTIFICATE, DIPLOMA, POSTDOCTORATE}
-
-     struct Transcript {
-        uint id;
+    struct Transcript {
+        uint256 id;
         string studentId;   
         address issuedBy;
-        bytes32 documenthash;
-        degreeType degreeType;
+        bytes32 documentHash;
+        DegreeType degreeType;
         uint256 dateIssued;
-        string ipfscid;
+        string ipfsCid;
         address studentAddress;
-        status status;
-        uint256 graduationyear;
-     }
-
-     uint public transcriptCount;
-
-     mapping (uint => Transcript) public transcripts;
-     mapping(string => bool) public existingCIDs;
-     mapping (string => uint) cidToTranscriptId;
-     mapping (address => uint[]) studentToTranscript;
-
-
-     event TranscriptIssued(address indexed studentAddress,string ipfsCid,uint256 dateissued, address issuedby);
-     event TranscriptInvalidated(address indexed studentAddress, uint256 dateissued, address issuedby);
-     
-     modifier onlyVerifiedInstitution{
-        require(registry.isInstitutionVerified(msg.sender), "Only verified institutions can issue transcripts");
-        _;
-     }
-
-     function issueTranscripts(
-        string memory studentId, 
-        string memory cid, 
-         bytes32 documenthash, 
-        degreeType degreetype,
-        address studentAddress,
-        uint256 graduationyear
-        ) external onlyVerifiedInstitution{
-            require(!existingCIDs[cid], "CID already used for another transcript");
-
-            transcriptCount++;
-            Transcript memory t = Transcript({
-                 id: transcriptCount,
-                 studentId: studentId,
-                 issuedBy: msg.sender,
-                 documenthash: documenthash,
-                 degreeType: degreetype,
-                 dateIssued: block.timestamp,
-                 ipfscid: cid,
-                 studentAddress: studentAddress,
-                 status: status.ACTIVE,
-                 graduationyear: graduationyear
-             });
-            transcripts[transcriptCount] = t;
-
-            existingCIDs[cid] = true;
-            cidToTranscriptId[cid] = transcriptCount;
-            studentToTranscript[studentAddress].push(transcriptCount);
-            emit TranscriptIssued(studentAddress,cid, block.timestamp, msg.sender);
-
-     }
-     
-     function verifyTranscript(string memory cid) external view returns(Transcript memory){
-          uint id = cidToTranscriptId[cid];
-         if (id == 0 || transcripts[id].status != status.ACTIVE ) {
-            revert TranscriptDoesNotExist();
-         }
-
-         return transcripts[id];
-
-     }
-
-     function inValidateTranscript(uint256 transcriptId) external onlyVerifiedInstitution{
-         Transcript storage t = transcripts[transcriptId];
-        require(t.studentAddress != address(0), "Transcript does not exist");
-        require(transcripts[transcriptId].issuedBy == msg.sender, "Only the issuer can invalidate the transcript");
-        require(transcripts[transcriptId].status == status.ACTIVE, "Transcript is already invalidated");
-        
-        t.status = status.REVOKED;
-        emit TranscriptInvalidated(t.studentAddress, block.timestamp, msg.sender);
-     }
-
-     function getTranscriptDetails(uint256 transcriptId) external view returns (Transcript memory){
-         require(transcripts[transcriptId].status == status.ACTIVE, "Transcript is invalidated");
-         Transcript memory t = transcripts[transcriptId];
-         return t;
-     }
-
-    function getStudentTranscripts(address student) external view returns (Transcript[] memory) {
-    uint[] memory ids = studentToTranscript[student];
-    Transcript[] memory result = new Transcript[](ids.length);
-    for (uint i = 0; i < ids.length; i++) {
-        result[i] = transcripts[ids[i]];
+        Status status;
+        uint256 graduationYear;
     }
-    return result;
-}
 
+    uint256 public transcriptCount;
 
+    mapping(uint256 => Transcript) public transcripts;
+    mapping(string => bool) public existingCIDs;
+    mapping(string => uint256) public cidToTranscriptId;
+    mapping(address => uint256[]) public studentToTranscripts;
+
+    event TranscriptIssued(address indexed studentAddress, uint256 indexed transcriptId, address indexed issuedBy);
+    event TranscriptInvalidated(address indexed studentAddress, uint256 indexed transcriptId);
+
+    modifier onlyVerifiedInstitution() {
+        require(registry.isInstitutionVerified(msg.sender), "Only verified institutions");
+        _;
+    }
+
+    error TranscriptDoesNotExist();
+    error CIDAlreadyUsed();
+
+    constructor(address _registryAddress) {
+        registry = institutionRegistry(_registryAddress);
+    }
+
+    function issueTranscripts(
+        string calldata _studentId,
+        string calldata _cid,
+        bytes32 _documentHash,
+        DegreeType _degreeType,
+        address _studentAddress,
+        uint256 _graduationYear
+    ) external onlyVerifiedInstitution {
+        if (existingCIDs[_cid]) revert CIDAlreadyUsed();
+
+        transcriptCount++;
+        uint256 newTranscriptId = transcriptCount;
+
+        transcripts[newTranscriptId] = Transcript({
+            id: newTranscriptId,
+            studentId: _studentId,
+            issuedBy: msg.sender,
+            documentHash: _documentHash,
+            degreeType: _degreeType,
+            dateIssued: block.timestamp,
+            ipfsCid: _cid,
+            studentAddress: _studentAddress,
+            status: Status.ACTIVE,
+            graduationYear: _graduationYear
+        });
+
+        existingCIDs[_cid] = true;
+        cidToTranscriptId[_cid] = newTranscriptId;
+        studentToTranscripts[_studentAddress].push(newTranscriptId);
+
+        emit TranscriptIssued(_studentAddress, newTranscriptId, msg.sender);
+    }
+
+    function verifyTranscript(string calldata _cid) external view returns(Transcript memory) {
+        uint256 id = cidToTranscriptId[_cid];
+        if (id == 0 || transcripts[id].status != Status.ACTIVE) {
+            revert TranscriptDoesNotExist();
+        }
+        return transcripts[id];
+    }
+
+    function inValidateTranscript(uint256 _transcriptId) external onlyVerifiedInstitution {
+        Transcript storage transcript = transcripts[_transcriptId];
+        
+        require(transcript.studentAddress != address(0), "Transcript does not exist");
+        require(transcript.issuedBy == msg.sender, "Only issuer can invalidate");
+        require(transcript.status == Status.ACTIVE, "Transcript already invalidated");
+        
+        transcript.status = Status.REVOKED;
+        emit TranscriptInvalidated(transcript.studentAddress, _transcriptId);
+    }
+
+    function getTranscriptDetails(uint256 _transcriptId) external view returns (Transcript memory) {
+        require(transcripts[_transcriptId].status == Status.ACTIVE, "Transcript invalidated");
+        return transcripts[_transcriptId];
+    }
+
+    function getStudentTranscripts(address _student) external view returns (Transcript[] memory) {
+        uint256[] memory ids = studentToTranscripts[_student];
+        Transcript[] memory result = new Transcript[](ids.length);
+        
+        for (uint256 i = 0; i < ids.length; i++) {
+            result[i] = transcripts[ids[i]];
+        }
+        return result;
+    }
 }

@@ -146,14 +146,14 @@ contract VerifyInstitution is Script {
 
         vm.startBroadcast(adminPrivateKey);
 
-        registry.VerifyInstitution(institutionToVerify);
+        registry.verifyInstitution(institutionToVerify);
 
         vm.stopBroadcast();
 
         console.log("Institution verified successfully!");
         
         // Get and display institution details
-        institutionRegistry.institution memory inst = registry.getInstitutionDetails(institutionToVerify);
+        institutionRegistry.Institution memory inst = registry.getInstitutionDetails(institutionToVerify);
         console.log("\nInstitution Details:");
         console.log("Name:", inst.name);
         console.log("Country:", inst.country);
@@ -185,7 +185,7 @@ contract IssueTestTranscript is Script {
             "TEST001",
             cid,
             docHash,
-            TranscriptManager.degreeType.BACHELOR,
+            TranscriptManager.DegreeType.BACHELOR,
             studentAddress,
             2024
         );
