@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { useWeb3 } from '@/contexts/Web3Context';
-import { Building, ArrowLeft, Upload, AlertCircle, Search, FileText, Loader2, UserPlus } from 'lucide-react';
+import { Building, ArrowLeft, Upload, AlertCircle, Search, FileText, Loader2, UserPlus, CheckCircle, XCircle } from 'lucide-react';
 import { issueCredential, getCredentialsByInstitution, revokeCredentialInDb } from '@/services/credentialService';
 import { registerInstitution, isInstitutionVerified, issueTranscript, DegreeType, getDegreeTypeName ,doesInstitutionExist} from '@/lib/contracts';
 import { uploadToPinata, calculateFileHash } from '@/lib/pinata'; // Use your existing Pinata functions
@@ -19,8 +19,7 @@ export default function InstitutionPage() {
   const [credentials, setCredentials] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [isVerified, setIsVerified] = useState(false);
-  const [checkingStatus, setCheckingStatus] = useState(true);
+    const [checkingStatus, setCheckingStatus] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [institutionStatus, setInstitutionStatus] = useState('unknown');
   
@@ -530,7 +529,7 @@ export default function InstitutionPage() {
 
                 <button
                   type="submit"
-                  disabled={submitting || isVerified}
+                  disabled={submitting || institutionStatus !== 'not-registered'}
                   className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                 >
                   {submitting ? (
@@ -539,7 +538,13 @@ export default function InstitutionPage() {
                       <span>Registering on Blockchain...</span>
                     </>
                   ) : (
-                    <span>{isVerified ? 'Already Registered' : 'Register Institution'}</span>
+                    <span>{
+                      institutionStatus === 'verified'
+                        ? 'Already Verified'
+                        : institutionStatus === 'registered'
+                          ? 'Awaiting Verification'
+                          : 'Register Institution'
+                    }</span>
                   )}
                 </button>
               </div>

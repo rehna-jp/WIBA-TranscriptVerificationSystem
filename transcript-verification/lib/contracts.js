@@ -1,5 +1,5 @@
 import {  config } from './wagmi';
-import { writeContract, readContract, waitForTransactionReceipt } from '@wagmi/core';
+import { writeContract, readContract, waitForTransactionReceipt, getPublicClient } from '@wagmi/core';
 
 const INSTITUTION_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_INSTITUTION_REGISTRY_ADDRESS;
 const TRANSCRIPT_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_TRANSCRIPT_MANAGER_ADDRESS;
@@ -8,6 +8,7 @@ const TRANSCRIPT_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_TRANSCRIPT_MANAGER_AD
 // Import contract artifacts (these are the full Hardhat/Truffle artifacts)
 import InstitutionRegistryArtifact from '../contracts/InstitutionRegistry.json';
 import TranscriptVerificationArtifact from '../contracts/TranscriptVerification.json';
+import { parseAbiItem } from 'viem';
 
 // Extract ABI from artifacts - since your files are in Hardhat/Truffle format
 const InstitutionRegistryABI = InstitutionRegistryArtifact.abi;
@@ -49,7 +50,7 @@ export const verifyInstitution = async (institutionAddress) => {
   try {
     const { hash } = await writeContract(config, {
       ...getInstitutionRegistryContract(),
-      functionName: 'VerifyInstitution',
+      functionName: 'verifyInstitution',
       args: [institutionAddress],
     });
 
@@ -342,4 +343,63 @@ export const getDegreeTypeName = (degreeType) => {
 
 export const getStatusName = (status) => {
   return status === 0 ? 'ACTIVE' : 'REVOKED';
+};
+
+// Fetch registered institutions from on-chain events and hydrate details
+export const fetchRegisteredInstitutions = async () => {
+  try {
+    const publicClient = getPublicClient(config);
+    const fromBlockEnv = process.env.NEXT_PUBLIC_REGISTRY_START_BLOCK;
+    const startBlock = fromBlockEnv ? BigInt(fromBlockEnv) : 0n;
+
+    const latest = await publicClient.getBlockNumber();
+    const event = parseAbiItem('event InstitutionRegistered(address indexed walletAddress, uint256 id)');
+
+    // RPCs like thirdweb limit eth_getLogs ranges. Use chunking (e.g., 5000 blocks per request)
+    const CHUNK = 5000n;
+    let fromBlock = startBlock;
+    const logsAll = [];
+
+    while (fromBlock <= latest) {
+      const toBlock = fromBlock + CHUNK - 1n > latest ? latest : fromBlock + CHUNK - 1n;
+      try {
+        const logs = await publicClient.getLogs({
+          address: INSTITUTION_REGISTRY_ADDRESS,
+          event,
+          fromBlock,
+          toBlock,
+        });
+        logsAll.push(...logs);
+      } catch (e) {
+        console.warn(`getLogs failed for range ${fromBlock}-${toBlock}`, e?.shortMessage || e?.message || e);
+      }
+      fromBlock = toBlock + 1n;
+    }
+
+    const addresses = Array.from(
+      new Set(
+        logsAll
+          .map((l) => l.args?.walletAddress)
+          .filter(Boolean)
+          .map((a) => a.toLowerCase())
+      )
+    );
+
+    const details = await Promise.all(
+      addresses.map(async (addr) => {
+        try {
+          const data = await getInstitutionDetails(addr);
+          return { ...data, address: addr };
+        } catch (e) {
+          console.warn('Failed to get details for', addr, e);
+          return { address: addr };
+        }
+      })
+    );
+
+    return details;
+  } catch (error) {
+    console.error('Error fetching registered institutions from events:', error);
+    return [];
+  }
 };

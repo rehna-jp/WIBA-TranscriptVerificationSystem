@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { useWeb3 } from '@/contexts/Web3Context';
-import { Shield, ArrowLeft, Plus, AlertCircle, Loader2 } from 'lucide-react';
-import { registerInstitutionInDb, getAllInstitutions, suspendInstitution, reactivateInstitution } from '@/services/institutionService';
-import { registerInstitution, verifyInstitution } from '@/lib/contracts'; // Import blockchain functions
+import { Shield, ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
+import { registerInstitutionInDb, getAllInstitutions, suspendInstitution, reactivateInstitution, verifyInstitutionAdmin } from '@/services/institutionService';
+import { fetchRegisteredInstitutions, getInstitutionDetails } from '@/lib/contracts';
 import { isAddress } from 'viem';
 import toast from 'react-hot-toast';
 
@@ -15,7 +15,6 @@ export default function AdminPage() {
   const { account, isConnected } = useWeb3();
   const [institutions, setInstitutions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   
@@ -50,8 +49,26 @@ export default function AdminPage() {
   const loadInstitutions = async () => {
     try {
       setLoading(true);
-      const data = await getAllInstitutions();
-      setInstitutions(data);
+      // Fetch on-chain registered institutions
+      const onChain = await fetchRegisteredInstitutions();
+
+      // Fetch DB institutions to mark which are already saved
+      const db = await getAllInstitutions();
+      const dbSet = new Set((db || []).map(i => (i.address || '').toLowerCase()));
+
+      const merged = (onChain || []).map(i => ({
+        id: i.id,
+        address: (i.walletAddress || i.address || '').toLowerCase(),
+        name: i.name || '',
+        country: i.country || '',
+        accreditedURL: i.accreditedURL || '',
+        email: i.email || '',
+        isVerified: !!i.isVerified,
+        status: i.isVerified ? 'Verified' : 'Pending',
+        inDatabase: dbSet.has((i.walletAddress || i.address || '').toLowerCase())
+      }));
+
+      setInstitutions(merged);
     } catch (error) {
       console.error('Error loading institutions:', error);
       toast.error('Failed to load institutions');
@@ -67,61 +84,29 @@ export default function AdminPage() {
     });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!isAddress(formData.address)) {
-      toast.error('Invalid wallet address');
-      return;
-    }
-
-    if (!formData.name.trim() || !formData.country.trim() || !formData.email.trim()) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
-    setSubmitting(true);
-    const toastId = toast.loading('Registering institution on blockchain...');
-
+  // Add verified institution to database using on-chain details
+  const handleAddToDatabase = async (institutionAddress) => {
     try {
-      // Step 1: Register on blockchain (this should be done by the institution themselves)
-      // But for admin setup, we might need a different approach
-      console.log('Attempting to register institution:', formData);
+      setSubmitting(true);
+      const toastId = toast.loading('Adding institution to database...');
 
-      // Note: In your smart contract, registerInstitution can only be called by the institution itself (msg.sender)
-      // So the admin cannot register an institution on behalf of someone else
-      // You might need to change your contract or workflow
+      const details = await getInstitutionDetails(institutionAddress);
+      await registerInstitutionInDb({
+        address: institutionAddress,
+        name: details?.name || '',
+        country: details?.country || '',
+        accreditedURL: details?.accreditedURL || '',
+        email: details?.email || '',
+        addedBy: account,
+        isVerified: true,
+        status: 'Active'
+      });
 
-      // For now, let's just register in the database and show a message
-      console.warn('Admin cannot register institutions on blockchain - institution must register themselves');
-
-      // Step 2: Register in database
-      // await registerInstitutionInDb(
-      //   formData.address,
-      //   formData.name,
-      //   formData.country,
-      //   formData.accreditedURL || '',
-      //   formData.email,
-      //   account
-      // );
-
-      toast.success('Institution registered in database! Institution must complete blockchain registration.', { id: toastId });
-      setShowForm(false);
-      setFormData({ address: '', name: '', country: '', accreditedURL: '', email: '' });
-      loadInstitutions();
+      toast.success('Institution added to database', { id: toastId });
+      await loadInstitutions();
     } catch (error) {
-      console.error('Error registering institution:', error);
-      let errorMessage = 'Failed to register institution';
-      
-      if (error.message?.includes('user rejected')) {
-        errorMessage = 'Transaction was rejected';
-      } else if (error.message?.includes('insufficient funds')) {
-        errorMessage = 'Insufficient funds for transaction';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      toast.error(errorMessage, { id: toastId });
+      console.error('Error adding institution to database:', error);
+      toast.error(error?.message || 'Failed to add to database');
     } finally {
       setSubmitting(false);
     }
@@ -133,10 +118,17 @@ export default function AdminPage() {
     const toastId = toast.loading('Verifying institution on blockchain...');
     try {
       // Verify institution on blockchain
-      const receipt = await verifyInstitution(institutionAddress);
+      const receipt = await verifyInstitutionAdmin(institutionAddress);
       console.log('Verification transaction receipt:', receipt);
       
       toast.success('Institution verified on blockchain!', { id: toastId });
+
+      // Refresh list and auto-add to database if missing
+      await loadInstitutions();
+      const inst = institutions.find(i => i.address.toLowerCase() === institutionAddress.toLowerCase());
+      if (!inst || !inst.inDatabase) {
+        await handleAddToDatabase(institutionAddress);
+      }
     } catch (error) {
       console.error('Error verifying institution on blockchain:', error);
       let errorMessage = 'Failed to verify institution on blockchain';
@@ -157,12 +149,12 @@ export default function AdminPage() {
     }
   };
 
-  const handleSuspend = async (institutionId, institutionAddress) => {
+  const handleSuspend = async (institutionAddress) => {
     if (!confirm('Are you sure you want to suspend this institution?')) return;
 
     const toastId = toast.loading('Suspending institution...');
     try {
-      await suspendInstitution(institutionId);
+      await suspendInstitution(institutionAddress);
       toast.success('Institution suspended in database', { id: toastId });
       loadInstitutions();
     } catch (error) {
@@ -170,10 +162,10 @@ export default function AdminPage() {
     }
   };
 
-  const handleReactivate = async (institutionId) => {
+  const handleReactivate = async (institutionAddress) => {
     const toastId = toast.loading('Reactivating institution...');
     try {
-      await reactivateInstitution(institutionId);
+      await reactivateInstitution(institutionAddress);
       toast.success('Institution reactivated', { id: toastId });
       loadInstitutions();
     } catch (error) {
@@ -227,116 +219,13 @@ export default function AdminPage() {
                 <Shield className="w-8 h-8 text-purple-600" />
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Admin Portal</h1>
               </div>
-              <p className="text-gray-600">Register and manage educational institutions</p>
+              <p className="text-gray-600">Manage institutions registered on-chain: verify and add to database</p>
               <p className="text-sm text-orange-600 mt-1">
-                Note: Institutions must register themselves on blockchain. Admin can only verify existing registrations.
+                Institutions must self-register on-chain. Admin verifies and adds to the database.
               </p>
             </div>
-            <button
-              onClick={() => setShowForm(!showForm)}
-              className="bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 transition flex items-center justify-center space-x-2 w-full md:w-auto"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Add to Database</span>
-            </button>
           </div>
 
-          {/* Registration Form
-          {showForm && (
-            <form onSubmit={handleSubmit} className="bg-purple-50 p-6 rounded-xl mb-8 border border-purple-200">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Add Institution to Database</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Wallet Address *
-                  </label>
-                  <input
-                    type="text"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent font-mono text-sm"
-                    placeholder="0x..."
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Institution Name *
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="e.g., Harvard University"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Country *
-                  </label>
-                  <input
-                    type="text"
-                    name="country"
-                    value={formData.country}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="e.g., USA"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Accredited URL
-                  </label>
-                  <input
-                    type="url"
-                    name="accreditedURL"
-                    value={formData.accreditedURL}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="https://"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Email *
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="contact@institution.edu"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 mt-4">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                >
-                  {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                  <span>{submitting ? 'Adding...' : 'Add to Database'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300 transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          )} */}
-
-          {/* Institutions Table */}
           {loading ? (
             <div className="text-center py-12">
               <Loader2 className="w-8 h-8 text-gray-400 mx-auto mb-4 animate-spin" />
@@ -345,13 +234,7 @@ export default function AdminPage() {
           ) : institutions.length === 0 ? (
             <div className="text-center py-12">
               <Shield className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 text-lg">No institutions registered yet</p>
-              <button
-                onClick={() => setShowForm(true)}
-                className="mt-4 bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition"
-              >
-                Add First Institution
-              </button>
+              <p className="text-gray-600 text-lg">No institutions registered on-chain yet</p>
             </div>
           ) : (
             <>
@@ -363,16 +246,17 @@ export default function AdminPage() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Institution</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Wallet Address</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Country</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">On-Chain Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Database</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {institutions.map((inst) => (
-                        <tr key={inst.id} className="hover:bg-gray-50">
+                        <tr key={inst.address} className="hover:bg-gray-50">
                           <td className="px-4 py-4">
-                            <div className="font-medium text-gray-900">{inst.name}</div>
-                            <div className="text-gray-500 text-sm">{inst.email}</div>
+                            <div className="font-medium text-gray-900">{inst.name || '—'}</div>
+                            <div className="text-gray-500 text-sm">{inst.email || '—'}</div>
                             <div className="text-gray-500 text-sm font-mono md:hidden">
                               {inst.address.slice(0, 6)}...{inst.address.slice(-4)}
                             </div>
@@ -380,38 +264,37 @@ export default function AdminPage() {
                           <td className="px-4 py-4 text-gray-500 font-mono text-sm hidden md:table-cell">
                             {inst.address.slice(0, 8)}...{inst.address.slice(-6)}
                           </td>
-                          <td className="px-4 py-4 text-gray-600">{inst.country}</td>
+                          <td className="px-4 py-4 text-gray-600">{inst.country || '—'}</td>
                           <td className="px-4 py-4">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                inst.status === 'Active'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}
-                            >
-                              {inst.status}
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${inst.isVerified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                              {inst.isVerified ? 'Verified' : 'Pending'}
                             </span>
                           </td>
-                          <td className="px-4 py-4 space-y-2 sm:space-y-0 sm:space-x-2">
-                            <button
-                              onClick={() => handleVerifyOnChain(inst.address)}
-                              className="text-blue-600 hover:text-blue-900 font-semibold text-sm block sm:inline-block mb-2 sm:mb-0"
-                            >
-                              Verify on Chain
-                            </button>
-                            {inst.status === 'Active' ? (
-                              <button
-                                onClick={() => handleSuspend(inst.id, inst.address)}
-                                className="text-red-600 hover:text-red-900 font-semibold text-sm block sm:inline-block"
-                              >
-                                Suspend
-                              </button>
+                          <td className="px-4 py-4">
+                            {inst.inDatabase ? (
+                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">Present</span>
                             ) : (
+                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800">Missing</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-4 space-y-2 sm:space-y-0 sm:space-x-2">
+                            {!inst.isVerified && (
                               <button
-                                onClick={() => handleReactivate(inst.id)}
-                                className="text-green-600 hover:text-green-900 font-semibold text-sm block sm:inline-block"
+                                onClick={() => handleVerifyOnChain(inst.address)}
+                                className="text-blue-600 hover:text-blue-900 font-semibold text-sm block sm:inline-block mb-2 sm:mb-0"
+                                disabled={submitting}
                               >
-                                Reactivate
+                                Verify on Chain
+                              </button>
+                            )}
+
+                            {inst.isVerified && !inst.inDatabase && (
+                              <button
+                                onClick={() => handleAddToDatabase(inst.address)}
+                                className="text-purple-600 hover:text-purple-900 font-semibold text-sm block sm:inline-block"
+                                disabled={submitting}
+                              >
+                                Add to Database
                               </button>
                             )}
                           </td>
@@ -425,19 +308,19 @@ export default function AdminPage() {
               {/* Stats */}
               <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-purple-50 p-4 rounded-lg border border-purple-200 text-center">
-                  <p className="text-sm text-gray-600 mb-1">Total Institutions</p>
+                  <p className="text-sm text-gray-600 mb-1">Total On-Chain</p>
                   <p className="text-2xl font-bold text-purple-600">{institutions.length}</p>
                 </div>
                 <div className="bg-green-50 p-4 rounded-lg border border-green-200 text-center">
-                  <p className="text-sm text-gray-600 mb-1">Active</p>
+                  <p className="text-sm text-gray-600 mb-1">Verified</p>
                   <p className="text-2xl font-bold text-green-600">
-                    {institutions.filter((i) => i.status === 'Active').length}
+                    {institutions.filter((i) => i.isVerified).length}
                   </p>
                 </div>
-                <div className="bg-red-50 p-4 rounded-lg border border-red-200 text-center">
-                  <p className="text-sm text-gray-600 mb-1">Suspended</p>
-                  <p className="text-2xl font-bold text-red-600">
-                    {institutions.filter((i) => i.status === 'Suspended').length}
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 text-center">
+                  <p className="text-sm text-gray-600 mb-1">In Database</p>
+                  <p className="text-2xl font-bold text-blue-600">
+                    {institutions.filter((i) => i.inDatabase).length}
                   </p>
                 </div>
               </div>
