@@ -6,8 +6,8 @@ import Navigation from '@/components/Navigation';
 import { useWeb3 } from '@/contexts/Web3Context';
 import { User, ArrowLeft, ExternalLink, Copy, Download, AlertCircle, FileText } from 'lucide-react';
 import { getCredentialsByStudent } from '@/services/credentialService';
-import { credentialTypes } from '@/lib/utils';
 import { copyToClipboard } from '@/lib/utils';
+import { getDegreeTypeName } from '@/lib/contracts';
 import toast from 'react-hot-toast';
 
 export default function StudentPage() {
@@ -44,8 +44,9 @@ export default function StudentPage() {
     }
   };
 
-  const handleViewOnIPFS = (ipfsUrl) => {
-    window.open(ipfsUrl, '_blank');
+  const handleViewOnIPFS = (ipfsUrl, cid) => {
+    const url = ipfsUrl || `${process.env.NEXT_PUBLIC_PINATA_GATEWAY}/ipfs/${cid}`;
+    window.open(url, '_blank');
   };
 
   if (!isConnected) {
@@ -104,7 +105,7 @@ export default function StudentPage() {
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <h3 className="text-2xl font-bold text-gray-900">
-                        {credentialTypes[cred.credentialType]}
+                        {getDegreeTypeName(cred.credentialType)}
                       </h3>
                       <p className="text-lg text-gray-600 mt-1">
                         Institution: {cred.institutionAddress.slice(0, 6)}...{cred.institutionAddress.slice(-4)}
@@ -148,14 +149,14 @@ export default function StudentPage() {
 
                   <div className="flex flex-wrap gap-3">
                     <button
-                      onClick={() => handleViewOnIPFS(cred.ipfsUrl)}
+                      onClick={() => handleViewOnIPFS(cred.ipfsUrl, cred.ipfsCid)}
                       className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center space-x-2"
                     >
                       <ExternalLink className="w-4 h-4" />
                       <span>View on IPFS</span>
                     </button>
                     <button
-                      onClick={() => handleViewOnIPFS(cred.ipfsUrl)}
+                      onClick={() => handleViewOnIPFS(cred.ipfsUrl, cred.ipfsCid)}
                       className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition flex items-center space-x-2"
                     >
                       <Download className="w-4 h-4" />
@@ -180,15 +181,33 @@ export default function StudentPage() {
                   {cred.transactionHash && (
                     <div className="mt-4 pt-4 border-t border-gray-200">
                       <p className="text-sm text-gray-600 mb-1">Blockchain Transaction</p>
-                      <a
-                        href={`https://mumbai.polygonscan.com/tx/${cred.transactionHash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-700 text-sm font-mono flex items-center space-x-1"
-                      >
-                        <span>{cred.transactionHash.slice(0, 10)}...{cred.transactionHash.slice(-8)}</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
+                      {(() => {
+                        let base = process.env.NEXT_PUBLIC_ETHERSCAN_URL || '';
+                        if (!base) {
+                          const id = typeof window !== 'undefined' ? window?.ethereum?.chainId : undefined;
+                          switch (id) {
+                            case '0xaa36a7': // Sepolia
+                              base = 'https://sepolia.etherscan.io/tx/';
+                              break;
+                            case '0x13882': // Polygon Amoy
+                              base = 'https://amoy.polygonscan.com/tx/';
+                              break;
+                            default:
+                              base = 'https://etherscan.io/tx/';
+                          }
+                        }
+                        return (
+                          <a
+                            href={`${base}${cred.transactionHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-700 text-sm font-mono flex items-center space-x-1"
+                          >
+                            <span>{cred.transactionHash.slice(0, 10)}...{cred.transactionHash.slice(-8)}</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
